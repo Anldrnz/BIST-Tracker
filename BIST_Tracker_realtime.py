@@ -71,15 +71,14 @@ class stock:
 
 
 def create_Stocks():
-    StockList = ['MAVI', 'ASELS', 'THYAO', 'ERBOS', 'MGROS', 'KRDMD', 'TTKOM', 'ISCTR',
-                 'KARSN', 'ARCLK', 'ALARK', 'KLGYO', 'VAKKO', 'PETKM', 'TCELL', 'BERA',
-                 'GLYHO', 'CCOLA', 'KCHOL', 'GARAN', 'ENKAI', 'AKGRT', 'TAVHL',
-                 'KOZAL', 'BRSAN', 'ULKER', 'VESTL', 'YATAS', 'SASA', 'SELEC', 'SISE',
-                 'TMSN', 'TOASO', 'TTRAK', 'SOKM', 'KAREL', 'KARTN', 'KLMSN',
-                 'KORDS', 'LOGO', 'MPARK', 'NETAS', 'OTKAR', 'SARKY', 'HALKB', 'HEKTS',
-                 'IPEKE', 'ISDMR', 'ISMEN', 'ECZYT', 'ENJSA', 'FROTO', 'CEMTS', 'CIMSA',
-                 'CLEBI', 'DOAS', 'ECILC', 'BRISA', 'AYGAZ', 'EREGL', 'ALGYO', 'AKSA',
-                 'AKCNS', 'KOZAA', 'SAHOL', 'AEFES', 'AGHOL']
+    StockList = ['MAVI', 'ASELS', 'THYAO', 'KRDMD', 'TTKOM', 'ISCTR',
+                 'KARSN', 'ARCLK', 'ALARK', 'PETKM', 'TCELL',
+                 'KCHOL', 'GARAN', 'TAVHL', 'TUPRS', 'GUBRF',
+                 'KOZAL', 'BRSAN', 'SASA', 'SISE', 'OSTIM',
+                 'TOASO', 'SOKM', 'KAREL', 'MARTI', 'ZOREN', 'BAYRK',
+                 'LOGO', 'MPARK', 'OTKAR', 'HALKB', 'HEKTS',
+                 'ISDMR', 'ENJSA', 'FROTO', 'EREGL', 'AKSA',
+                 'KOZAA', 'SAHOL']
     # StockList = ['ASELS', ]
     MyList = np.array([])
     for i in range(len(StockList)):
@@ -188,7 +187,8 @@ while 1:
     now_date = str(datetime.datetime.fromtimestamp(time.time()))
     [days, times] = now_date.split(' ')
     hour_now = times.split(':')[0]
-    if now > last_time_in_data + 30 * 60000 + 10000 and (int(hour_now) < 15 and int(hour_now) >= 6):
+    min_now = times.split(':')[1]
+    if (now > last_time_in_data + 30 * 60000 + 10000) and int(hour_now) < 15 and ((int(hour_now) >= 7 and int(min_now) >= 15) or int(hour_now) >= 8):
         for stock in stock_list:
             url = 'https://web-cloud-new.foreks.com/tradingview-services/trading-view/history?symbol=' + stock.name + \
                   '.E.BIST&resolution=' + RESOLUTION + '&from=' + str(int(last_time_in_data + 10000)) + '&to=' + \
