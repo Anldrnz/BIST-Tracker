@@ -6,8 +6,6 @@ import string
 import threading
 import time
 
-import matplotlib.pyplot as plt
-import mplfinance as mpf
 import numpy as np
 import pandas as pd
 import requests
@@ -15,7 +13,17 @@ import requests
 # https://github.com/sammchardy/python-binance
 # https://github.com/LUCIT-Systems-and-Development/unicorn-binance-websocket-api
 from binance.client import Client
+from telegram.ext import Updater
 from unicorn_binance_websocket_api.manager import BinanceWebSocketApiManager
+
+# TELEGRAM Constants
+TG_TOKEN = '1079945138:AAFpAWUd8AYgTsq8dkjJKg_HOEWAIXHItTA'
+TG_URL = "https://api.telegram.org/bot{}/".format(TG_TOKEN)
+ChatID = '-434324601'
+# Telegram BOT starter functions
+updater = Updater(TG_TOKEN)
+dispatcher = updater.dispatcher
+MyBot = updater.bot  # Bot instance to use that is bound to the token.
 
 API_KEY = 'n3iweYuOAx3UXKyT95t2q9MiT4dy7cMiwghjs8TSAFLDYBpeEwElWgbLIVn1Nu7B'
 API_KEY_SECRET = 'kreH4pr4kX22FXrbni0ExyJuXasnMeXNPDfW6P1NzZbVKRq4WVgOg2mja4gb9rhT'
@@ -25,7 +33,7 @@ base_endpoint = 'https://api.binance.com'  # Select the Binance API endpoint for
 client = Client(api_key=API_KEY, api_secret=API_KEY_SECRET, tld='com')
 
 end = int(time.time() * 1000)  # 1635015600000
-start = end - 60000 * 60 * 24 * 10  # 1633708800000
+start = end - 60000 * 60 * 24 * 1  # 1633708800000
 TIMEFRAMES = ('M5', 'M15', 'H1', 'H4', 'D1')
 TABLE_NAMES = ('COIN_M5', 'COIN_M15', 'COIN_H1', 'COIN_H4', 'COIN_D1')
 
@@ -54,8 +62,6 @@ def get_announcement():
         f"https://www.binance.com/gateway-api/v1/public/cms/article/list/query"
         f"?{queries[0]}&{queries[1]}&{queries[2]}&{queries[3]}&{queries[4]}&{queries[5]}"
     )
-    print(request_url)
-
     latest_announcement = requests.get(request_url)
     if latest_announcement.status_code == 200:
         latest_announcement = latest_announcement.json()
@@ -138,21 +144,19 @@ def get_traded_symbols():
 
 
 def get_all_symbols():
+    t1 = time.time() * 1000
     tickers = client.get_all_tickers()
     symbol_list_usdt = []
     symbol_list_btc = []
-    all_symbols = []
     for item in tickers:
         symb = item['symbol']
         if 'USDT' in symb and 'BTC' not in symb:
             symbol_list_usdt.append(symb.lower())
-        elif 'BTC' in symb and 'USD' not in symb:
+        elif 'BTC' in symb and 'USD' not in symb and 'UST' not in symb:
             symbol_list_btc.append(symb.lower())
     all_symbols = symbol_list_btc + symbol_list_btc
-
-    print(len(symbol_list_usdt), symbol_list_usdt)
-    print(len(symbol_list_btc), symbol_list_btc)
-
+    all_symbols = np.array(all_symbols)
+    print(f"All coin names are gathered in {0.001 * (time.time() * 1000 - t1):.2f} seconds.\n")
     return all_symbols
 
 
@@ -185,170 +189,39 @@ class Coin:
         df['VOLUME(10)'] = sma(df['VOLUME'], 10)
 
     def initialize_dfs(self, start_time, end_time):
-        t2 = time.time()
+        t1 = time.time() * 1000
         print(self.name)
-        kline = client.get_historical_klines(self.name, Client.KLINE_INTERVAL_5MINUTE, start_time, end_time)
-        print(f'Klines were collected in {time.time() - t2:.2f} seconds...')
-        self.M5.drop(index=self.M5.index[0], axis=0, inplace=True)
-        self.M15.drop(index=self.M15.index[0], axis=0, inplace=True)
-        self.H1.drop(index=self.H1.index[0], axis=0, inplace=True)
-        self.H4.drop(index=self.H4.index[0], axis=0, inplace=True)
-        self.D1.drop(index=self.D1.index[0], axis=0, inplace=True)
-        # Creating 5M timeframe ohlc and indicators
-        for i in range(len(kline) - 1):
-            self.M5 = self.M5.append({
-                'TIME': float(kline[i][0]),
-                'OPEN': float(kline[i][1]),
-                'HIGH': float(kline[i][2]),
-                'LOW': float(kline[i][3]),
-                'CLOSE': float(kline[i][4]),
-                'VOLUME': float(kline[i][5]),
-                'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                'MA_200': 0, 'MA_50': 0, 'MA_10': 0
-            }, ignore_index=True)
-        self.update_indicators(self.M5)
-        # Creating remaining timeframe ohlc and indicators
-        for i in range(2, len(self.M5), 3):
-            self.M15 = self.M15.append(
-                {'TIME': float(self.M5['TIME'][i - 2]), 'OPEN': float(self.M5['OPEN'][i - 2]),
-                 'HIGH': max(float(self.M5['HIGH'][i]), float(self.M5['HIGH'][i - 1]),
-                             float(self.M5['HIGH'][i - 2])),
-                 'LOW': min(float(self.M5['LOW'][i]), float(self.M5['LOW'][i - 1]),
-                            float(self.M5['LOW'][i - 2])),
-                 'CLOSE': float(self.M5['CLOSE'][i]),
-                 'VOLUME': sum([float(self.M5['VOLUME'][i]), float(self.M5['VOLUME'][i - 1]),
-                                float(self.M5['VOLUME'][i - 2])]),
-                 'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                 'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-            if (i + 1) % 12 == 0 and i >= 11:
-                self.H1 = self.H1.append(
-                    {'TIME': float(self.M15['TIME'].iloc[-4]), 'OPEN': float(self.M15['OPEN'].iloc[-4]),
-                     'HIGH': max(float(self.M15['HIGH'].iloc[-1]), float(self.M15['HIGH'].iloc[-2]),
-                                 float(self.M15['HIGH'].iloc[-3]), float(self.M15['HIGH'].iloc[-4])),
-                     'LOW': min(float(self.M15['LOW'].iloc[-1]), float(self.M15['LOW'].iloc[-2]),
-                                float(self.M15['LOW'].iloc[-3]), float(self.M15['LOW'].iloc[-4])),
-                     'CLOSE': float(self.M15['CLOSE'].iloc[-1]),
-                     'VOLUME': sum([float(self.M15['VOLUME'].iloc[-1]), float(self.M15['VOLUME'].iloc[-2]),
-                                    float(self.M15['VOLUME'].iloc[-3]), float(self.M15['VOLUME'].iloc[-4])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-            if (i + 1) % 48 == 0 and i >= 47:
-                self.H4 = self.H4.append(
-                    {'TIME': float(self.H1['TIME'].iloc[-4]), 'OPEN': float(self.H1['OPEN'].iloc[-4]),
-                     'HIGH': max(float(self.H1['HIGH'].iloc[-1]), float(self.H1['HIGH'].iloc[-2]),
-                                 float(self.H1['HIGH'].iloc[-3]), float(self.H1['HIGH'].iloc[-4])),
-                     'LOW': min(float(self.H1['LOW'].iloc[-1]), float(self.H1['LOW'].iloc[-2]),
-                                float(self.H1['LOW'].iloc[-3]), float(self.H1['LOW'].iloc[-4])),
-                     'CLOSE': float(self.H1['CLOSE'].iloc[-1]),
-                     'VOLUME': sum([float(self.H1['VOLUME'].iloc[-1]), float(self.H1['VOLUME'].iloc[-2]),
-                                    float(self.H1['VOLUME'].iloc[-3]), float(self.H1['VOLUME'].iloc[-4])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-            if (i + 1) % 288 == 0 and i >= 287:
-                self.D1 = self.D1.append(
-                    {'TIME': float(self.H4['TIME'].iloc[-6]), 'OPEN': float(self.H4['OPEN'].iloc[-6]),
-                     'HIGH': max(float(self.H4['HIGH'].iloc[-1]), float(self.H4['HIGH'].iloc[-2]),
-                                 float(self.H4['HIGH'].iloc[-3]), float(self.H4['HIGH'].iloc[-4]),
-                                 float(self.H4['HIGH'].iloc[-5]), float(self.H4['HIGH'].iloc[-6])),
-                     'LOW': min(float(self.H4['LOW'].iloc[-1]), float(self.H4['LOW'].iloc[-2]),
-                                float(self.H4['LOW'].iloc[-3]), float(self.H4['LOW'].iloc[-4]),
-                                float(self.H4['LOW'].iloc[-5]), float(self.H4['LOW'].iloc[-6])),
-                     'CLOSE': float(self.H4['CLOSE'].iloc[-1]),
-                     'VOLUME': sum(
-                         [float(self.H4['VOLUME'].iloc[-1]), float(self.H4['VOLUME'].iloc[-2]),
-                          float(self.H4['VOLUME'].iloc[-3]), float(self.H4['VOLUME'].iloc[-4]),
-                          float(self.H4['VOLUME'].iloc[-5]), float(self.H4['VOLUME'].iloc[-6])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-                self.update_indicators(self.M15)
-                self.update_indicators(self.H1)
-                self.update_indicators(self.H4)
-                self.update_indicators(self.D1)
+        INTERVALS = [Client.KLINE_INTERVAL_5MINUTE, Client.KLINE_INTERVAL_15MINUTE, Client.KLINE_INTERVAL_1HOUR,
+                     Client.KLINE_INTERVAL_4HOUR, Client.KLINE_INTERVAL_1DAY]
+        HOW_MUCH_BACK = 60  # 220 - How many candles back for each timeframe(220 to calculate MA200)
+        DURATIONS = [1000 * 60 * 5 * HOW_MUCH_BACK, 1000 * 60 * 15 * HOW_MUCH_BACK,
+                     1000 * 60 * 60 * HOW_MUCH_BACK, 1000 * 60 * 240 * HOW_MUCH_BACK, 1000 * 60 * 1440 * HOW_MUCH_BACK]
+        # Creating ohlc and indicators
+        for i in range(len(INTERVALS)):
+            start_time = end_time - DURATIONS[i]
+            kline = np.array(client.get_historical_klines(self.name, INTERVALS[i], start_time, end_time))
+            vars(self)[TIMEFRAMES[i]] = pd.DataFrame(kline.reshape(-1, 12)[:, :6], dtype=float,
+                                                     columns=('TIME', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME'))
+            self.update_indicators(vars(self)[TIMEFRAMES[i]])
+        print(f"Klines are collected and dataframes are initialized in {0.001 * (time.time() * 1000 - t1):.2f} secs.")
 
-                '''
-                main() function in which we are defining the crypto symbols we want to 
-                get price updates for, then initializing the Binance client, calling some 
-                Binance client APIs to get exchange info and finally we are starting the 
-                WebSocket listener to get price updates
-                '''
-
-    def update_dfs_by_kline(self, kline):
-        update_m15 = False
-        update_h1 = False
-        update_h4 = False
-        update_d1 = False
-        for i in range(len(kline)):
-            self.M5 = self.M5.append({
-                'TIME': float(kline[i][0]),
-                'OPEN': float(kline[i][1]),
-                'HIGH': float(kline[i][2]),
-                'LOW': float(kline[i][3]),
-                'CLOSE': float(kline[i][4]),
-                'VOLUME': float(kline[i][5]),
-                'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                'MA_200': 0, 'MA_50': 0, 'MA_10': 0
-            }, ignore_index=True)
-            if self.M5['TIME'].iloc[-1] == self.M15['TIME'].iloc[-1] + 60000 * 25:
-                self.M15 = self.M15.append(
-                    {'TIME': float(self.M5['TIME'].iloc[-3]), 'OPEN': float(self.M5['OPEN'].iloc[-3]),
-                     'HIGH': max(float(self.M5['HIGH'].iloc[-1]), float(self.M5['HIGH'].iloc[-2]),
-                                 float(self.M5['HIGH'].iloc[-3])),
-                     'LOW': min(float(self.M5['LOW'].iloc[-1]), float(self.M5['LOW'].iloc[-2]),
-                                float(self.M5['LOW'].iloc[-3])),
-                     'CLOSE': float(self.M5['CLOSE'].iloc[-1]),
-                     'VOLUME': sum([float(self.M5['VOLUME'].iloc[-1]), float(self.M5['VOLUME'].iloc[-2]),
-                                    float(self.M5['VOLUME'].iloc[-3])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-                update_m15 = True
-                self.update_indicators(self.M15)
-            if self.M5['TIME'].iloc[-1] == self.H1['TIME'].iloc[-1] + 60000 * 115:
-                self.H1 = self.H1.append(
-                    {'TIME': float(self.M15['TIME'].iloc[-4]), 'OPEN': float(self.M15['OPEN'].iloc[-4]),
-                     'HIGH': max(float(self.M15['HIGH'].iloc[-1]), float(self.M15['HIGH'].iloc[-2]),
-                                 float(self.M15['HIGH'].iloc[-3]), float(self.M15['HIGH'].iloc[-4])),
-                     'LOW': min(float(self.M15['LOW'].iloc[-1]), float(self.M15['LOW'].iloc[-2]),
-                                float(self.M15['LOW'].iloc[-3]), float(self.M15['LOW'].iloc[-4])),
-                     'CLOSE': float(self.M15['CLOSE'].iloc[-1]),
-                     'VOLUME': sum(
-                         [float(self.M15['VOLUME'].iloc[-1]), float(self.M15['VOLUME'].iloc[-2]),
-                          float(self.M15['VOLUME'].iloc[-3]), float(self.M15['VOLUME'].iloc[-4])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-                update_h1 = True
-                self.update_indicators(self.H1)
-            if self.M5['TIME'].iloc[-1] == self.H4['TIME'].iloc[-1] + 60000 * 475:
-                self.H4 = self.H4.append(
-                    {'TIME': float(self.H1['TIME'].iloc[-4]), 'OPEN': float(self.H1['OPEN'].iloc[-4]),
-                     'HIGH': max(float(self.H1['HIGH'].iloc[-1]), float(self.H1['HIGH'].iloc[-2]),
-                                 float(self.H1['HIGH'].iloc[-3]), float(self.H1['HIGH'].iloc[-4])),
-                     'LOW': min(float(self.H1['LOW'].iloc[-1]), float(self.H1['LOW'].iloc[-2]),
-                                float(self.H1['LOW'].iloc[-3]), float(self.H1['LOW'].iloc[-4])),
-                     'CLOSE': float(self.H1['CLOSE'].iloc[-1]),
-                     'VOLUME': sum([float(self.H1['VOLUME'].iloc[-1]), float(self.H1['VOLUME'].iloc[-2]),
-                                    float(self.H1['VOLUME'].iloc[-3]), float(self.H1['VOLUME'].iloc[-4])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-                update_h4 = True
-                self.update_indicators(self.H4)
-            if self.M5['TIME'].iloc[-1] == self.D1['TIME'].iloc[-1] + 60000 * 2875:
-                self.D1 = self.D1.append(
-                    {'TIME': float(self.H4['TIME'].iloc[-6]), 'OPEN': float(self.H4['OPEN'].iloc[-6]),
-                     'HIGH': max(float(self.H4['HIGH'].iloc[-1]), float(self.H4['HIGH'].iloc[-2]),
-                                 float(self.H4['HIGH'].iloc[-3]), float(self.H4['HIGH'].iloc[-4]),
-                                 float(self.H4['HIGH'].iloc[-5]), float(self.H4['HIGH'].iloc[-6])),
-                     'LOW': min(float(self.H4['LOW'].iloc[-1]), float(self.H4['LOW'].iloc[-2]),
-                                float(self.H4['LOW'].iloc[-3]), float(self.H4['LOW'].iloc[-4]),
-                                float(self.H4['LOW'].iloc[-5]), float(self.H4['LOW'].iloc[-6])),
-                     'CLOSE': float(self.H4['CLOSE'].iloc[-1]),
-                     'VOLUME': sum([float(self.H4['VOLUME'].iloc[-1]), float(self.H4['VOLUME'].iloc[-2]),
-                                    float(self.H4['VOLUME'].iloc[-3]), float(self.H4['VOLUME'].iloc[-4]),
-                                    float(self.H4['VOLUME'].iloc[-5]), float(self.H4['VOLUME'].iloc[-6])]),
-                     'RSI': 0, 'IFTRSI': 0, 'BOLL_H': 0, 'BOLL_M': 0, 'BOLL_L': 0,
-                     'MA_200': 0, 'MA_50': 0, 'MA_10': 0}, ignore_index=True)
-                update_d1 = True
-                self.update_indicators(self.D1)
-        self.update_indicators(self.M5)
+    def update_dfs_by_kline(self, idx, interval, kline):
+        filenames = [self.filenameM5, self.filenameM15, self.filenameH1, self.filenameH4, self.filenameD1]
+        t1 = time.time() * 1000
+        # kline = np.array(client.get_historical_klines(self.name, interval, start_time, end_time))
+        df_temp = pd.DataFrame(kline, dtype=float,
+                               columns=('TIME', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME'))
+        # Check if the init kline collection got the latest candle without closing.
+        if int(vars(self)[TIMEFRAMES[idx]]['TIME'].iloc[-1]) == int(df_temp['TIME'].iloc[-1]):
+            vars(self)[TIMEFRAMES[idx]] = vars(self)[TIMEFRAMES[idx]][:-1]
+        vars(self)[TIMEFRAMES[idx]] = vars(self)[TIMEFRAMES[idx]].append(df_temp).reset_index(drop=True)
+        self.update_indicators(vars(self)[TIMEFRAMES[idx]])
+        del df_temp
+        conn = sqlite3.connect(str(filenames[idx] + '.db'))
+        vars(self)[TIMEFRAMES[idx]].to_sql(TABLE_NAMES[idx], conn, if_exists='replace', index=False)
+        conn.commit()
+        conn.close()
+        print(f"Klines are collected and dataframes are updated in {0.001 * (time.time() * 1000 - t1):.2f} secs.")
 
     def check_db(self):
         return os.path.isfile(str(self.filenameM5 + '.db'))
@@ -359,18 +232,6 @@ class Coin:
             conn = sqlite3.connect(str(filenames[i] + '.db'))
             vars(self)[TIMEFRAMES[i]] = pd.read_sql_query(f"SELECT * FROM {TABLE_NAMES[i]}", conn)
             conn.close()
-        if vars(self)['M5']['TIME'].iloc[-1] + 60000 * 5 + 10000 < time.time() * 1000:  # 1634573100000 + 60000 * 6:
-            print('-> New data available, checking for klines...')
-            t4 = time.time()
-            kline = client.get_historical_klines(self.name, Client.KLINE_INTERVAL_5MINUTE,
-                                                 int(vars(self)['M5']['TIME'].iloc[-1] + 10000),
-                                                 int(time.time() * 1000))
-            # int(time.time()*1000)) 1634573100000 + 60000 * 6
-            print(f'-> -> New klines were collected in {time.time() - t4:.2f} seconds...')
-            t4 = time.time()
-            self.update_dfs_by_kline(kline)
-            self.append2db()
-            print(f'-> -> Databases appended in {time.time() - t4:.2f} seconds...')
 
     def create_dbs(self):
         filenames = [self.filenameM5, self.filenameM15, self.filenameH1, self.filenameH4, self.filenameD1]
@@ -413,9 +274,9 @@ def calc_iftrsi(series):
 def calc_bollinger(df):
     length = 20
     std = 2
-    return (df.rolling(window=length).mean() + std * df.rolling(window=length).apply(
-        np.std)), (df.rolling(window=length).mean() - std * df.rolling(window=length).apply(np.std)), (
-               df.rolling(window=length).mean())
+    mean = df.rolling(window=length).mean()
+    st = df.rolling(window=length).apply(np.std)
+    return (mean + std * st, mean - std * st, mean)
 
 
 def sma(df, period):
@@ -431,34 +292,106 @@ def calc_macd(series):
 
 
 def initialize_coins(symbols):
+    t1 = time.time() * 1000
     coin_objects = np.array([])
     for names in symbols:
         a_coin = Coin(names)
-        coin_objects = np.append(coin_objects, a_coin)
-        # print(f'\nCoin * - {a_coin.name} - * created...')
-        # print('-> -> Checking if the databases were created...')
         if a_coin.check_db():
-            # t1 = time.time()
             a_coin.read_dbs()
-            # print(f'-> -> Read the existing dbs in {time.time() - t1:.2f} seconds...')
         else:
-            # t1 = time.time()
             a_coin.initialize_dfs(start, end)
-            # print(f'-> -> Dataframes initialized in {time.time() - t1:.2f} seconds...')
-            # t1 = time.time()
             a_coin.create_dbs()
-            # print(f'-> -> Databases are created in {time.time() - t1:.2f} seconds...')
-        # print("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\n")
+        coin_objects = np.append(coin_objects, a_coin)
+    print(f"All coins are initialized in {0.001 * (time.time() * 1000 - t1):.2f} seconds.\n")
     return coin_objects
 
 
+def create_new_kline(data):
+    interval = data['i']
+    symbol = data['s']
+    idx = np.where(all_symbols == symbol.lower())[0][0]
+    coin = coin_list[idx]
+    new_kline = np.array(
+        [data['t'], data['o'], data['h'], data['l'], data['c'], data['v']]).reshape(-1, 6)
+    if interval == '5m':
+        idx_tf = 0
+        df = coin.M5
+        if df['TIME'].iloc[-1] < int(data['t']) - 5 * 60 * 1000:
+            new_kline = np.array(
+                client.get_historical_klines(coin.name, '5m', int(df['TIME'].iloc[-1] + 10000),
+                                             int(time.time() * 1000))).reshape(-1, 12)[:, :6]
+    elif interval == '15m':
+        idx_tf = 1
+        df = coin.M15
+        if df['TIME'].iloc[-1] < int(data['t']) - 15 * 60 * 1000:
+            new_kline = np.array(
+                client.get_historical_klines(coin.name, '15m', int(df['TIME'].iloc[-1] + 10000),
+                                             int(time.time() * 1000))).reshape(-1, 12)[:, :6]
+    elif interval == '1h':
+        idx_tf = 2
+        df = coin.H1
+        if df['TIME'].iloc[-1] < int(data['t']) - 60 * 60 * 1000:
+            new_kline = np.array(
+                client.get_historical_klines(coin.name, '1h', int(df['TIME'].iloc[-1] + 10000),
+                                             int(time.time() * 1000))).reshape(-1, 12)[:, :6]
+    elif interval == '4h':
+        idx_tf = 3
+        df = coin.H4
+        if df['TIME'].iloc[-1] < int(data['t']) - 240 * 60 * 1000:
+            new_kline = np.array(
+                client.get_historical_klines(coin.name, '4h', int(df['TIME'].iloc[-1] + 10000),
+                                             int(time.time() * 1000))).reshape(-1, 12)[:, :6]
+    elif interval == '1d':
+        idx_tf = 4
+        df = coin.D1
+        if df['TIME'].iloc[-1] < int(data['t']) - 1440 * 60 * 1000:
+            new_kline = np.array(
+                client.get_historical_klines(coin.name, '1d', int(df['TIME'].iloc[-1] + 10000),
+                                             int(time.time() * 1000))).reshape(-1, 12)[:, :6]
+    return coin, idx_tf, interval, new_kline
+
+
+def is_price_jump(coin):
+    if coin.M5['CLOSE'].iloc[-1] / coin.M5['OPEN'].iloc[-1] > 1.10:
+        return True
+    return False
+
+
+def is_volume_jump(coin):
+    if coin.H1['VOLUME'].iloc[-1] / coin.H1['VOLUME(10)'].iloc[-1] > 2.0:
+        return True
+    return False
+
+
+def validate_symbols(all_symbols):
+    end = int(time.time() * 1000)
+    start = end - 60000 * 60
+    symbols = np.array([])
+    for i in range(len(all_symbols)):
+        kline = np.array(
+            client.get_historical_klines(all_symbols[i].upper(), Client.KLINE_INTERVAL_5MINUTE, start, end))
+        if len(kline) > 0:
+            symbols = np.append(symbols, all_symbols[i])
+    return symbols
+
+
+'''
+main() function in which we are defining the crypto symbols we want to 
+get price updates for, then initializing the Binance client, calling some 
+Binance client APIs to get exchange info and finally we are starting the 
+WebSocket listener to get price updates
+'''
+
+all_symbols = get_all_symbols()
+all_symbols = np.unique(all_symbols[0:50])
+all_symbols = validate_symbols(all_symbols)
+number_of_coins = len(all_symbols)
+# all_symbols = np.array(['ethbtc', 'ltcbtc'])
+print('Creating coin instances and initializing databases...', len(all_symbols), '\n', all_symbols)  # [0:2]
+coin_list = initialize_coins(all_symbols)  # [0:2]
+
+
 def main():
-    print('Getting the list of all symbols...')
-    # all_symbols = get_all_symbols()
-    all_symbols = ['ethbtc', 'ltcbtc']
-    print('Creating coin instances and initializing databases...', all_symbols[0:2])
-    coin_list = initialize_coins(all_symbols[0:2])
-    print(f"Created coins: {coin_list}")
     print('Generating binance websocket api manager...')
     binance_websocket_api_manager = BinanceWebSocketApiManager(exchange="binance.com", output_default="dict")
     binance_websocket_api_manager.create_stream('kline_5m', all_symbols, stream_label="dict", output="dict")
@@ -467,21 +400,63 @@ def main():
     # TODO: get kline info of ticker and create/update database
     # TODO: add telegram bot
     # TODO: add plotly traces
+
+    # MyBot.send_message(chat_id=ChatID, text='Binance tracker started')
+    last_announcement = get_announcement()
+    last_announcement_time = time.time()
+    print(last_announcement)
+    last_data_time = coin_list[1].M5['TIME'].values[-1]
+    print(last_data_time)
+    count = 0
+    sleep = 0  # if it sleeps but no websocket info was found for an iteration, it shouldnt sleep that much again.
     while True:
+        now = time.time() * 1000
+        if count == 0 and sleep == 0 and now < last_data_time + 60000 * 10:
+            s = int(0.001 * (last_data_time + 60000 * 10 - now)) + 5
+            print(f"Sleeping for {s} seconds.")
+            time.sleep(s)
+            sleep = 1
         if binance_websocket_api_manager.is_manager_stopping():
             exit(0)
         oldest_stream_data_from_stream_buffer = binance_websocket_api_manager.pop_stream_data_from_stream_buffer()
         if oldest_stream_data_from_stream_buffer is False:
-            time.sleep(0.1)
+            time.sleep(1)
         else:
             if oldest_stream_data_from_stream_buffer is not None:
-                try:
+                # try:
+                now = time.time()
+                if now - last_announcement_time > 3600:
+                    new_announcement = get_announcement()
+                    if last_announcement != new_announcement:
+                        last_announcement = new_announcement
+                        print(new_announcement)
+                        MyBot.send_message(chat_id=ChatID, text=str(new_announcement))
+                    last_announcement_time = now
+                if 'data' in oldest_stream_data_from_stream_buffer.keys():
                     if oldest_stream_data_from_stream_buffer['data']['k']['x']:
-                        # TODO: check if price went up more than 10%
-                        # TODO: check if volume went up more than 10%
-                        print(f"dict: {oldest_stream_data_from_stream_buffer}")
-                except KeyError:
-                    pass
+                        print(oldest_stream_data_from_stream_buffer['data']['k'])
+                        data = oldest_stream_data_from_stream_buffer['data']['k']
+                        coin, idx_tf, interval, new_kline = create_new_kline(data)
+                        coin.update_dfs_by_kline(idx_tf, interval, new_kline)
+                        # print('df:\n', df.tail())
+                        price_rocket = is_price_jump(coin)
+                        volume_rocket = is_volume_jump(coin)
+                        msg = ""
+                        if price_rocket:
+                            msg += f"{coin.name} price went up {100 * (coin.M5['CLOSE'].iloc[-1] / coin.M5['OPEN'].iloc[-1] - 1):.2f}%\n"
+                        if volume_rocket:
+                            msg += f"{coin.name} volume went up {100 * (coin.H1['VOLUME'].iloc[-1] / coin.H1['VOLUME(10)'].iloc[-1] - 1):.2f}%\n"
+                        if price_rocket or volume_rocket:
+                            MyBot.send_message(chat_id=ChatID, text=msg)
+                        count += 1
+                        print(count)
+                        if count == number_of_coins:
+                            count = 0
+                            sleep = 0
+                            last_data_time = coin.M5['TIME'].iloc[-1]
+                            print(time.time() * 1000, last_data_time)
+                # except Exception as e:
+                #     print(str(e))
         # TODO: set a timer and check if binance announcement changes, return new listing info
         # TODO: set another timer and check for telegram requests
         # TODO: send plotly analysis image(supports and resistances)
