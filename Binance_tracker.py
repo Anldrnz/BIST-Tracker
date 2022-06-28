@@ -17,7 +17,6 @@ from telegram.ext import Updater
 from unicorn_binance_websocket_api.manager import BinanceWebSocketApiManager
 
 # TELEGRAM Constants
-TG_TOKEN = '1079945138:AAFpAWUd8AYgTsq8dkjJKg_HOEWAIXHItTA'
 TG_URL = "https://api.telegram.org/bot{}/".format(TG_TOKEN)
 ChatID = '-434324601'
 # Telegram BOT starter functions
@@ -25,8 +24,6 @@ updater = Updater(TG_TOKEN)
 dispatcher = updater.dispatcher
 MyBot = updater.bot  # Bot instance to use that is bound to the token.
 
-API_KEY = 'n3iweYuOAx3UXKyT95t2q9MiT4dy7cMiwghjs8TSAFLDYBpeEwElWgbLIVn1Nu7B'
-API_KEY_SECRET = 'kreH4pr4kX22FXrbni0ExyJuXasnMeXNPDfW6P1NzZbVKRq4WVgOg2mja4gb9rhT'
 base_endpoint = 'https://api.binance.com'  # Select the Binance API endpoint for your exchange
 
 # Initialize binance client
